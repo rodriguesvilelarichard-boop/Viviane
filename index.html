@@ -270,6 +270,7 @@ function toast(msg){ var t=$('#toast'); t.textContent=msg; t.classList.add('on')
 
 /* ================== UNIDADES ================== */
 function dimDe(u){ return UN[u]?UN[u].d:null; }
+function singular(n){ n=String(n||'unidades'); if(/ões$/i.test(n)) return n.replace(/ões$/i,'ão'); if(/ães$/i.test(n)) return n.replace(/ães$/i,'ão'); return n.replace(/s$/i,''); }
 function rotUn(u,q){ var o=UN[u]||CASEIRAS[u]; if(!o) return u||''; return (q!=null && Math.abs(q)>=2)?o.p:o.s; }
 function fmtEmb(ing){ return fmtNum(ing.qtdEmb,3)+' '+rotUn(ing.unidade,num(ing.qtdEmb)); }
 function fmtQtdBase(q,dim){
@@ -309,7 +310,7 @@ var S; var storageOk=true;
 function estadoVazio(){
   return {app:'custo-cozinha',versao:1,
     config:{sobraDesejada:40,sobraMinima:20,gasPorFornada:3.83,energiaPorFornada:0.5,botijao:115,fornadasBotijao:30,semanas:1,ordem:{campo:'pct',asc:true}},
-    ingredientes:[],receitas:[],cardapio:{},ultimoBackup:0,alteradoEm:0};
+    ingredientes:[],receitas:[],cardapio:{},compras:[],ultimoBackup:0,alteradoEm:0};
 }
 function migrar(o){
   var b=estadoVazio();
@@ -330,6 +331,10 @@ function migrar(o){
   });
   var cd=o.cardapio||{};
   b.receitas.forEach(function(r){ if(Array.isArray(cd[r.id])){ var d=[0,0,0,0,0,0]; for(var i=0;i<6;i++) d[i]=num(cd[r.id][i]); if(soma(d)>0) b.cardapio[r.id]=d; } });
+  b.compras=(Array.isArray(o.compras)?o.compras:[]).filter(Boolean).map(function(c){
+    return {id:c.id||novoId(),data:c.data||hoje(),local:String(c.local||''),
+      itens:(Array.isArray(c.itens)?c.itens:[]).map(function(it){return {ingId:it.ingId||'',pacotes:vazio(it.pacotes)?1:num(it.pacotes),tam:vazio(it.tam)?'':num(it.tam),un:UN[it.un]?it.un:'',preco:vazio(it.preco)?'':num(it.preco)};})};
+  });
   b.ultimoBackup=num(o.ultimoBackup); b.alteradoEm=num(o.alteradoEm);
   return b;
 }
@@ -515,7 +520,7 @@ function descCusto(ing){
 }
 function telaIngredientes(){
   var h='<h2>Ingredientes</h2><p class="ajuda">Cadastre o que você compra e quanto pagou. Quando o preço mudar, é só atualizar aqui: todas as receitas mudam sozinhas.</p>';
-  h+='<button class="btn grande" data-acao="novo-ing" type="button">➕ Cadastrar ingrediente</button>';
+  h+='<div class="botoes"><button class="btn sec" data-acao="lancar-compra" type="button">🧾 Lançar compra</button><button class="btn" data-acao="novo-ing" type="button">➕ Cadastrar ingrediente</button></div>';
   var lista=S.ingredientes.slice().sort(porNome);
   if(!lista.length) return h+'<div class="vazio"><span class="ic">🧂</span>Nenhum ingrediente ainda.<br>Toque no botão acima para começar.</div>';
   if(lista.length>6) h+='<label class="campo"><span class="esconde">Procurar</span><input id="busca-ing" type="search" placeholder="🔎 Procurar ingrediente…"></label>';
@@ -623,7 +628,28 @@ function textoCompras(c,sem){
   t+='\n*Total estimado: '+R(c.total)+'*';
   return t;
 }
+var subCompras='lista';
+try{ subCompras=localStorage.getItem('custoCozinha_subCompras')||'lista'; }catch(e){}
 function telaCompras(){
+  var h='<div class="seg" style="margin:4px 0 14px"><button type="button" data-acao="sub-compras" data-v="lista" class="'+(subCompras!=='feitas'?'on':'')+'">🛒 O que comprar</button><button type="button" data-acao="sub-compras" data-v="feitas" class="'+(subCompras==='feitas'?'on':'')+'">🧾 Compras feitas</button></div>';
+  return h+(subCompras==='feitas'? telaComprasFeitas() : telaListaCompras());
+}
+function telaComprasFeitas(){
+  var h='<h2>Compras feitas</h2><p class="ajuda">Lance o que você comprou e quanto pagou. O preço dos ingredientes atualiza sozinho e o custo das receitas também.</p>';
+  h+='<button class="btn grande" type="button" data-acao="lancar-compra">🧾 Lançar compra</button>';
+  var lista=S.compras.slice().sort(function(a,b){ return a.data<b.data?1:a.data>b.data?-1:0; });
+  if(!lista.length) return h+'<div class="vazio"><span class="ic">🧾</span>Nenhuma compra lançada ainda.<br>Dica: na aba "O que comprar", toque em <b>"Comprei"</b> quando voltar do mercado.</div>';
+  var mes=hoje().slice(0,7), totMes=soma(lista.filter(function(c){return c.data.slice(0,7)===mes;}).map(totalCompra));
+  h+='<p class="resumo-ed">Gasto em compras neste mês: '+R(totMes)+'</p>';
+  lista.forEach(function(c){
+    var nomes=c.itens.map(function(it){ var g=ingPorId(it.ingId); return g?g.nome:'(excluído)'; });
+    h+='<button class="card" type="button" data-acao="ver-compra" data-id="'+c.id+'"><span class="seta">Ver ›</span><span class="titulo">'+fmtData(c.data)+(c.local?' · '+esc(c.local):'')+'</span>'+
+      '<span class="linha"><b>'+R(totalCompra(c))+'</b> · '+c.itens.length+(c.itens.length===1?' item':' itens')+'</span>'+
+      '<span class="linha">'+esc(nomes.slice(0,4).join(', '))+(nomes.length>4?'…':'')+'</span></button>';
+  });
+  return h;
+}
+function telaListaCompras(){
   var sem=S.config.semanas===2?2:1;
   var h='<h2>Lista de compras</h2><p class="ajuda">Feita a partir do <b>cardápio da semana</b>. Já arredonda para embalagens inteiras.</p>';
   h+='<div class="seg-semanas"><button type="button" class="btn sec'+(sem===1?' on':'')+'" data-acao="semanas" data-v="1">1 semana</button><button type="button" class="btn sec'+(sem===2?' on':'')+'" data-acao="semanas" data-v="2">2 semanas</button></div>';
@@ -640,7 +666,7 @@ function telaCompras(){
   h+='</div>';
   h+='<div class="total-box"><span>Total estimado da compra</span><span class="big">'+R(c.total)+'</span></div>';
   h+='<p class="ajuda">Desse valor, o que vai realmente para as receitas é '+R(c.usado)+'. O resto é o que sobra nas embalagens para as próximas semanas.</p>';
-  h+='<div class="pilha"><button type="button" class="btn grande" data-acao="copiar">📋 Copiar lista (para colar no WhatsApp)</button>'+
+  h+='<div class="pilha"><button type="button" class="btn grande verde" data-acao="comprei-lista">✅ Comprei! Lançar o que paguei</button><button type="button" class="btn grande" data-acao="copiar">📋 Copiar lista (para colar no WhatsApp)</button>'+
      '<a class="btn grande sec" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(textoCompras(c,sem))+'">💬 Abrir no WhatsApp</a></div>';
   h+='<p class="ajuda">O botão "Abrir no WhatsApp" precisa de internet. O "Copiar" funciona sempre.</p>';
   h+='<p class="ajuda">Embalagens de venda (caixas, bandejas) não entram nesta lista.</p>';
@@ -677,6 +703,10 @@ document.getElementById('tela').addEventListener('click',function(e){
   }
   else if(ac==='limpar-semana'){ if(confirm('Apagar todo o cardápio da semana?')){ S.cardapio={}; salvar(); renderTela(); } }
   else if(ac==='semanas'){ S.config.semanas=num(el.getAttribute('data-v')); gravar(true); renderTela(); }
+  else if(ac==='sub-compras'){ subCompras=el.getAttribute('data-v'); try{ localStorage.setItem('custoCozinha_subCompras',subCompras); }catch(e){} renderTela(); }
+  else if(ac==='lancar-compra') editarCompra(null);
+  else if(ac==='ver-compra') editarCompra(id);
+  else if(ac==='comprei-lista'){ var sm=S.config.semanas===2?2:1; editarCompra(null,calcCompras(sm).linhas.filter(function(l){return l.pacotes>0;})); }
   else if(ac==='copiar'){ var sem=S.config.semanas===2?2:1; copiarTexto(textoCompras(calcCompras(sem),sem)); }
 });
 document.getElementById('tela').addEventListener('input',function(e){
@@ -761,6 +791,7 @@ function editarIngrediente(id,aoSalvar,aoFechar){
         '<label class="campo"><span>Data do preço</span><input type="date" data-f="data" value="'+esc(d.data)+'"></label>'+
         '<div class="previa" id="ing-prev"></div>'+
         htmlCaseira()+
+        htmlHistorico(orig)+
         (usos.length?'<p class="ajuda">Usado em: <b>'+esc(usos.map(function(r){return r.nome;}).join(', '))+'</b>. Ao salvar, o custo dessas receitas já muda.</p>':'')+
         '<div class="botoes"><button class="btn sec" type="button" data-acao="voltar">Cancelar</button><button class="btn" type="button" data-acao="salvar">Salvar</button></div>'+
         (orig?'<div class="botoes um"><button class="btn perigo peq" type="button" data-acao="excluir">Excluir ingrediente</button></div>':'')+
@@ -812,6 +843,137 @@ function editarIngrediente(id,aoSalvar,aoFechar){
         if(!confirm('Excluir "'+orig.nome+'"?')) return;
         S.ingredientes=S.ingredientes.filter(function(i){return i.id!==orig.id;});
         salvar(); c.sujo=false; fecharCamada(); toast('Ingrediente excluído');
+      }
+    });
+  });
+}
+
+/* ================== COMPRAS FEITAS ================== */
+function baseItemCompra(it){ return num(it.tam)*(UN[it.un]?UN[it.un].f:0); }
+function precoBaseCompra(it){ var b=baseItemCompra(it); return b>0? num(it.preco)/b : 0; }
+function totalItemCompra(it){ return num(it.pacotes)*num(it.preco); }
+function totalCompra(c){ return soma(c.itens.map(totalItemCompra)); }
+function itemCompraDe(ing,pacotes){ return {ingId:ing?ing.id:'',pacotes:pacotes||1,tam:ing?num(ing.qtdEmb):'',un:ing?ing.unidade:'',preco:ing?num(ing.preco):''}; }
+function opcoesUnCompra(ing,atual){
+  if(!ing) return '<option value="">—</option>';
+  var d=dimDe(ing.unidade), l= d==='m'?['g','kg'] : d==='v'?['ml','L'] : ['un'];
+  return l.map(function(u){ return '<option value="'+u+'"'+(u===atual?' selected':'')+'>'+(u==='un'?'unidades':u)+'</option>'; }).join('');
+}
+function precoNoPacoteDe(ing,pb){ return pb*baseEmb(ing); }   // preço por base -> preço do pacote padrão
+function variacao(antes,depois){ if(!(antes>0)) return ''; var v=(depois-antes)/antes*100; if(Math.abs(v)<0.5) return '<span class="ajuda" style="display:inline">(igual)</span>'; return v>0? '<b class="verm-tx">▲ '+fmtNum(v,0)+'%</b>' : '<b class="verde-tx">▼ '+fmtNum(-v,0)+'%</b>'; }
+function historicoPrecos(ingId){
+  var h=[]; S.compras.forEach(function(c){ c.itens.forEach(function(it){ if(it.ingId===ingId && precoBaseCompra(it)>0) h.push({data:c.data,pb:precoBaseCompra(it),local:c.local}); }); });
+  h.sort(function(a,b){ return a.data<b.data?1:a.data>b.data?-1:0; });
+  return h;
+}
+function htmlHistorico(ing){
+  if(!ing) return '';
+  var hs=historicoPrecos(ing.id); if(!hs.length) return '';
+  var h='<details class="secao" open><summary>📈 Histórico de preços (embalagem de '+esc(fmtEmb(ing))+')</summary><ul class="lista-simples">';
+  hs.slice(0,12).forEach(function(x,i){
+    var p=precoNoPacoteDe(ing,x.pb), ant=hs[i+1]? precoNoPacoteDe(ing,hs[i+1].pb) : 0;
+    h+='<li><span>'+fmtData(x.data)+(x.local?' <span class="ajuda" style="display:inline">· '+esc(x.local)+'</span>':'')+'</span><span class="num">'+R(p)+' '+(ant?variacao(ant,p):'')+'</span></li>';
+  });
+  return h+'</ul></details>';
+}
+// Atualiza o preço dos ingredientes com a compra (só se ela for a mais recente daquele ingrediente)
+function aplicarPrecosDaCompra(c){
+  var mud=[]; mud.antigos=[];
+  c.itens.forEach(function(it){
+    var ing=ingPorId(it.ingId); if(!ing) return;
+    var pb=precoBaseCompra(it); if(!(pb>0) || dimDe(it.un)!==dimDe(ing.unidade)) return;
+    var hs=historicoPrecos(ing.id);
+    if((hs.length && hs[0].data>c.data) || (ing.data && ing.data>c.data)){ mud.antigos.push(ing.nome); return; } // já existe preço mais novo
+    var antes=num(ing.preco), novo=Math.round(precoNoPacoteDe(ing,pb)*100)/100;
+    ing.preco=novo; ing.data=c.data;
+    if(Math.abs(novo-antes)>=0.005) mud.push('• '+ing.nome+' ('+fmtEmb(ing)+'): '+R(antes)+' → '+R(novo)+(antes>0?' ('+(novo>antes?'+':'')+fmtNum((novo-antes)/antes*100,0)+'%)':''));
+  });
+  return mud;
+}
+function editarCompra(id,daLista){
+  var orig= id? S.compras.filter(function(c){return c.id===id;})[0] : null;
+  var d= orig? clone(orig) : {id:novoId(),data:hoje(),local:'',itens:[]};
+  if(!orig){ if(daLista && daLista.length) d.itens=daLista.map(function(l){ return itemCompraDe(l.ing,l.pacotes); }); else d.itens=[itemCompraDe(null)]; }
+  abrirCamada('pagina',function(c){
+    c.aoFechar=renderTela;
+    if(daLista && daLista.length) c.sujo=true;
+    function render(){
+      var st=c.el.scrollTop, ings=S.ingredientes.slice().sort(porNome);
+      var h='<div class="topo"><button class="btn peq" type="button" data-acao="voltar">← Voltar</button><h2>'+(orig?'Compra de '+fmtData(orig.data):'Lançar compra')+'</h2></div><div class="corpo">';
+      if(daLista && !orig) h+='<div class="aviso info">Os itens vieram da lista de compras. Confira a quantidade e coloque <b>o preço que você pagou</b> em cada um. Tire (✕) o que não comprou.</div>';
+      h+='<div class="linha2"><label class="campo"><span>Data</span><input type="date" data-f="data" value="'+esc(d.data)+'"></label><label class="campo"><span>Onde comprou <span class="opc">(opcional)</span></span><input data-f="local" value="'+esc(d.local)+'" placeholder="Ex.: Atacadão"></label></div>';
+      h+='<div class="secao"><h3>O que você comprou</h3>';
+      d.itens.forEach(function(it,i){
+        var ing=ingPorId(it.ingId);
+        var opts=ings.map(function(g){return '<option value="'+g.id+'"'+(g.id===it.ingId?' selected':'')+'>'+esc(g.nome)+'</option>';}).join('');
+        h+='<div class="item"><div class="item-l1"><select data-lista="itens" data-i="'+i+'" data-f="ingId" aria-label="Ingrediente"><option value="">— escolha o ingrediente —</option>'+opts+'<option value="__novo">➕ Cadastrar ingrediente novo…</option></select>'+
+          '<button class="x" type="button" data-acao="rem-item" data-i="'+i+'" aria-label="Tirar item">✕</button></div>';
+        if(ing){
+          h+='<div class="linha2" style="grid-template-columns:1fr 1fr"><label class="campo"><span>Quantos pacotes?</span><input data-lista="itens" data-i="'+i+'" data-f="pacotes" inputmode="decimal" value="'+paraInput(it.pacotes)+'"></label>'+
+            '<label class="campo"><span>Preço de cada (R$)</span><input data-lista="itens" data-i="'+i+'" data-f="preco" data-dinheiro inputmode="decimal" value="'+paraInput(it.preco,true)+'"></label></div>'+
+            '<label class="campo" style="margin-top:0"><span>Tamanho de cada pacote</span><span class="linha2" style="font-weight:400;grid-template-columns:1fr 130px"><input data-lista="itens" data-i="'+i+'" data-f="tam" inputmode="decimal" value="'+paraInput(it.tam)+'" aria-label="Tamanho"><select data-lista="itens" data-i="'+i+'" data-f="un" aria-label="Medida">'+opcoesUnCompra(ing,it.un)+'</select></span></label>'+
+            '<div class="previa" id="cp-'+i+'"></div>';
+        }
+        h+='</div>';
+      });
+      h+='<button class="btn sec grande" type="button" data-acao="add-item">➕ Adicionar item</button></div>';
+      if(orig) h+='<div class="botoes um"><button class="btn perigo" type="button" data-acao="excluir">🗑️ Excluir esta compra</button></div><p class="ajuda">Excluir a compra não volta os preços dos ingredientes.</p>';
+      h+='</div><div class="rodape"><div class="rodape-in"><div class="previa-rod" id="cp-total"></div><div class="botoes"><button class="btn sec" type="button" data-acao="voltar">Cancelar</button><button class="btn" type="button" data-acao="salvar">💾 Salvar compra</button></div></div></div>';
+      c.el.innerHTML=h; c.el.scrollTop=st; previa();
+    }
+    function previa(){
+      d.itens.forEach(function(it,i){
+        var el=$('#cp-'+i,c.el), ing=ingPorId(it.ingId); if(!el||!ing) return;
+        var pb=precoBaseCompra(it);
+        if(!(pb>0)){ el.className='previa'; el.textContent='Coloque o tamanho e o preço.'; return; }
+        var novo=precoNoPacoteDe(ing,pb), antes=num(ing.preco);
+        var cor= antes>0 && novo>antes*1.005? 'amarelo' : 'verde';
+        el.className='previa '+cor;
+        el.innerHTML='Total <b>'+R(totalItemCompra(it))+'</b> · '+esc(fmtEmb(ing))+' sai <b>'+R(novo)+'</b>'+(antes>0?' · antes '+R(antes)+' '+variacao(antes,novo):'');
+      });
+      var t=$('#cp-total',c.el); if(t) t.innerHTML='Total da compra: <b>'+R(totalCompra(d))+'</b>';
+    }
+    render();
+    function alvo(el){ var l=el.getAttribute('data-lista'); return l? d[l][+el.getAttribute('data-i')] : d; }
+    c.el.addEventListener('input',function(e){
+      var el=e.target, f=el.getAttribute('data-f'); if(!f||el.tagName==='SELECT') return;
+      var o=alvo(el); o[f]= (f==='data'||f==='local')? el.value : lerNum(el.value); c.sujo=true; previa();
+    });
+    c.el.addEventListener('change',function(e){
+      var el=e.target; if(el.tagName!=='SELECT') return;
+      var f=el.getAttribute('data-f'), o=alvo(el), i=+el.getAttribute('data-i'); c.sujo=true;
+      if(f==='ingId'){
+        if(el.value==='__novo'){ editarIngrediente(null,function(novo){ d.itens[i]=itemCompraDe(ingPorId(novo),d.itens[i].pacotes); },render); return; }
+        d.itens[i]=itemCompraDe(ingPorId(el.value),o.pacotes); render(); return;
+      }
+      o[f]=el.value; previa();
+    });
+    c.el.addEventListener('click',function(e){
+      var b=e.target.closest('[data-acao]'); if(!b) return; var ac=b.getAttribute('data-acao'), i=+b.getAttribute('data-i');
+      if(ac==='voltar') fecharCamada();
+      else if(ac==='add-item'){ d.itens.push(itemCompraDe(null)); c.sujo=true; render(); var s=c.el.querySelectorAll('select[data-f="ingId"]'); if(s.length) s[s.length-1].focus(); }
+      else if(ac==='rem-item'){ d.itens.splice(i,1); c.sujo=true; render(); }
+      else if(ac==='excluir'){
+        if(!confirm('Excluir a compra de '+fmtData(orig.data)+' ('+R(totalCompra(orig))+')?')) return;
+        S.compras=S.compras.filter(function(x){return x.id!==orig.id;}); salvar(); c.sujo=false; fecharCamada(); toast('Compra excluída');
+      }
+      else if(ac==='salvar'){
+        d.itens=d.itens.filter(function(it){return it.ingId;});
+        var erros=[];
+        if(!d.data) erros.push('Coloque a data da compra.');
+        if(!d.itens.length) erros.push('Coloque pelo menos um item.');
+        d.itens.forEach(function(it){ var g=ingPorId(it.ingId), n=g?g.nome:'?';
+          if(!(num(it.pacotes)>0)) erros.push('Quantos pacotes de '+n+'?');
+          if(!(num(it.tam)>0)) erros.push('Qual o tamanho do pacote de '+n+'?');
+          if(!(num(it.preco)>0)) erros.push('Quanto pagou em '+n+'?'); });
+        if(erros.length){ render(); alert('Quase lá! Falta:\n\n• '+erros.join('\n• ')); return; }
+        d.local=String(d.local||'').trim();
+        if(orig){ var pos=S.compras.indexOf(orig); S.compras[pos]=d; } else S.compras.push(d);
+        var mud=aplicarPrecosDaCompra(d);
+        salvar(); c.sujo=false; fecharCamada();
+        if(mud.length) alert('Compra salva ✓\n\nPreços atualizados (os custos das receitas já mudaram):\n\n'+mud.join('\n'));
+        else if(mud.antigos.length) alert('Compra salva ✓\n\nOs preços NÃO mudaram, porque já existe um preço mais novo que '+fmtData(d.data)+' para:\n• '+mud.antigos.join('\n• '));
+        else toast('Compra salva ✓ Os preços não mudaram.');
       }
     });
   });
@@ -1072,7 +1234,7 @@ function abrirResultado(id){
       return k.formas.map(function(f){
         var s='<div class="card forma-res st-'+f.st.c+'"><div class="cab"><span class="titulo">'+esc(f.f.nome)+'</span><span class="tag '+f.st.c+'">'+f.st.t+'</span></div>';
         if(f.custo==null) return s+'<p>'+esc(f.motivo)+'</p></div>';
-        s+='<ul class="lista-simples"><li><span>Custo do produto <span class="ajuda">('+((k.peso||f.f.tipo==='peso')?fmtPesoForma(f.f):fmtNum(f.f.qtd,2)+' '+esc(r.rendNome))+')</span></span><span class="num">'+R(f.custoProduto)+'</span></li>'+
+        s+='<ul class="lista-simples"><li><span>Custo do produto <span class="ajuda">('+((k.peso||f.f.tipo==='peso')?fmtPesoForma(f.f):fmtNum(f.f.qtd,2)+' '+esc(num(f.f.qtd)<2?singular(r.rendNome):r.rendNome))+')</span></span><span class="num">'+R(f.custoProduto)+'</span></li>'+
           '<li><span>Embalagem</span><span class="num">'+R(num(f.f.embalagem))+'</span></li>'+
           '<li class="total"><span>Custo total</span><span class="num">'+R(f.custo)+'</span></li>'+
           '<li><span>Preço que você cobra</span><span class="num">'+(f.preco>0?R(f.preco):'—')+'</span></li></ul>';
@@ -1193,7 +1355,7 @@ function importarArquivo(file,aoTerminar){
     var dados= o && o.dados ? o.dados : o;
     if(!dados || !Array.isArray(dados.ingredientes) || !Array.isArray(dados.receitas)){ alert('Esse arquivo não é um backup deste aplicativo.'); return; }
     var quando= o.exportadoEm? new Date(o.exportadoEm).toLocaleString('pt-BR') : 'data desconhecida';
-    if(!confirm('Backup de '+quando+'\n'+dados.ingredientes.length+' ingredientes e '+dados.receitas.length+' receitas.\n\nIsso vai SUBSTITUIR tudo o que está neste aparelho. Continuar?')) return;
+    if(!confirm('Backup de '+quando+'\n'+dados.ingredientes.length+' ingredientes, '+dados.receitas.length+' receitas e '+(Array.isArray(dados.compras)?dados.compras.length:0)+' compras.\n\nIsso vai SUBSTITUIR tudo o que está neste aparelho. Continuar?')) return;
     S=migrar(dados); S.ultimoBackup=Date.now(); S.alteradoEm=S.ultimoBackup; gravar(true);
     renderTela(); toast('Backup restaurado ✓'); if(aoTerminar) aoTerminar();
   };
@@ -1219,7 +1381,7 @@ function abrirBackup(){
             '<p class="ajuda"><b>Android (Chrome):</b> toque nos 3 pontinhos ⋮ no canto de cima → <b>Instalar app</b> (ou "Adicionar à tela inicial").<br><b>iPhone (Safari):</b> toque em Compartilhar ⬆️ → <b>Adicionar à Tela de Início</b>.</p>' :
             '<p class="ajuda">Você está usando o arquivo. Para instalar como app, abra pelo endereço da internet que te passaram.</p>'))+
         '</div>';
-      h+='<p class="tec" style="text-align:center">Custo da Cozinha · versão 4 (app instalável)</p>';
+      h+='<p class="tec" style="text-align:center">Custo da Cozinha · versão 5 (compras e histórico de preços)</p>';
       h+='<div class="secao"><h3>Onde ficam seus dados?</h3><p class="ajuda">Só neste aparelho, dentro deste navegador. Nada vai para a internet. Se você limpar os dados do navegador ou trocar de celular, eles somem. <b>Por isso faça backup toda semana.</b></p></div>';
       h+='<div class="secao"><h3>Cores do alerta</h3><p class="ajuda">Verde quando sobra pelo menos <b>'+fmtNum(S.config.sobraDesejada,0)+'%</b> · vermelho quando sobra menos de <b>'+fmtNum(S.config.sobraMinima,0)+'%</b>. Para mudar, vá em <b>Resumo</b>.</p></div>';
       h+='<div class="secao"><h3>Apagar</h3><div class="pilha">'+(temExemplo()?'<button class="btn perigo" type="button" data-acao="apagar-exemplo">Apagar exemplo (bolo de cenoura)</button>':'')+

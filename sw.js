@@ -1,5 +1,5 @@
 /* Faz o app abrir sem internet. Ao mudar o app, troque o número da versão abaixo. */
-var CACHE = 'custo-cozinha-v4';
+var CACHE = 'custo-cozinha-v6';
 var ARQUIVOS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', function (e) {
