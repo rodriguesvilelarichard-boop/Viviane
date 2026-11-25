@@ -470,7 +470,6 @@ function atualizarAvisos(){
 /* ---------- Receitas ---------- */
 function telaReceitas(){
   var h='<h2>Receitas e produtos</h2>';
-  if(!S.ingredientes.length) h+='<div class="aviso">Dica: comece cadastrando os <b>ingredientes</b>. Mas você também pode cadastrar direto de dentro da receita.</div>';
   h+='<button class="btn grande" data-acao="nova-rec" type="button">➕ Nova receita</button><div style="height:12px"></div>';
   var lista=S.receitas.slice().sort(porNome);
   if(!lista.length) return h+'<div class="vazio"><span class="ic">🎂</span>Nenhuma receita ainda.</div>';
