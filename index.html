@@ -320,12 +320,12 @@ function migrar(o){
   b.ingredientes=(Array.isArray(o.ingredientes)?o.ingredientes:[]).filter(Boolean).map(function(i){
     var dim=dimDe(i.unidade)||'m'; var pp=palpiteCaseira(i.nome,dim);
     return {id:i.id||novoId(),nome:String(i.nome||'Sem nome'),qtdEmb:num(i.qtdEmb),unidade:UN[i.unidade]?i.unidade:'g',preco:num(i.preco),data:i.data||hoje(),
-      xic:vazio(i.xic)?pp[0]:num(i.xic),cs:vazio(i.cs)?pp[1]:num(i.cs),cc:vazio(i.cc)?pp[2]:num(i.cc),exemplo:!!i.exemplo};
+      xic:vazio(i.xic)?pp[0]:num(i.xic),cs:vazio(i.cs)?pp[1]:num(i.cs),cc:vazio(i.cc)?pp[2]:num(i.cc)};
   });
   b.receitas=(Array.isArray(o.receitas)?o.receitas:[]).filter(Boolean).map(function(r){
     return {id:r.id||novoId(),nome:String(r.nome||'Sem nome'),rendimento:vazio(r.rendimento)?'':num(r.rendimento),rendNome:r.rendNome||'unidades',rendTipo:r.rendTipo==='peso'?'peso':'un',pesoUn:r.pesoUn==='kg'?'kg':'g',
       pesoTotal:vazio(r.pesoTotal)?'':num(r.pesoTotal),perda:vazio(r.perda)?'':num(r.perda),fornadas:vazio(r.fornadas)?1:num(r.fornadas),
-      gas:vazio(r.gas)?'':num(r.gas),energia:vazio(r.energia)?'':num(r.energia),sobraAlvo:vazio(r.sobraAlvo)?'':num(r.sobraAlvo),exemplo:!!r.exemplo,
+      gas:vazio(r.gas)?'':num(r.gas),energia:vazio(r.energia)?'':num(r.energia),sobraAlvo:vazio(r.sobraAlvo)?'':num(r.sobraAlvo),
       itens:(Array.isArray(r.itens)?r.itens:[]).map(function(it){return {ingId:it.ingId||'',qtd:vazio(it.qtd)?'':num(it.qtd),unidade:it.unidade||''};}),
       formas:(Array.isArray(r.formas)?r.formas:[]).map(function(f){return {id:f.id||novoId(),nome:String(f.nome||''),tipo:f.tipo==='peso'?'peso':'un',qtdUn:f.qtdUn==='kg'?'kg':'g',qtd:vazio(f.qtd)?'':num(f.qtd),embalagem:vazio(f.embalagem)?'':num(f.embalagem),preco:vazio(f.preco)?'':num(f.preco)};})
     };
@@ -357,40 +357,10 @@ function salvar(){ gravar(false); }
 function ingPorId(id){ for(var i=0;i<S.ingredientes.length;i++) if(S.ingredientes[i].id===id) return S.ingredientes[i]; return null; }
 function recPorId(id){ for(var i=0;i<S.receitas.length;i++) if(S.receitas[i].id===id) return S.receitas[i]; return null; }
 function usosIng(id){ return S.receitas.filter(function(r){ return r.itens.some(function(it){return it.ingId===id;}); }); }
-function temExemplo(){ return S.receitas.some(function(r){return r.exemplo;}) || S.ingredientes.some(function(i){return i.exemplo;}); }
 function backupPendente(){ return (S.ingredientes.length||S.receitas.length) && S.alteradoEm > (S.ultimoBackup||0); }
 
 function exemplo(){
-  var s=estadoVazio(); var d=hoje();
-  function ing(id,nome,q,u,p,x,cs,cc){ var pp=palpiteCaseira(nome,dimDe(u)); s.ingredientes.push({id:id,nome:nome,qtdEmb:q,unidade:u,preco:p,data:d,xic:x==null?pp[0]:x,cs:cs==null?pp[1]:cs,cc:cc==null?pp[2]:cc,exemplo:true}); }
-  ing('ex-cen','Cenoura',1,'kg',5.99);
-  ing('ex-ovo','Ovos (bandeja com 12)',12,'un',11.90);
-  ing('ex-ole','Óleo de soja',900,'ml',8.49);
-  ing('ex-acu','Açúcar refinado',1,'kg',4.79);
-  ing('ex-far','Farinha de trigo',1,'kg',5.49);
-  ing('ex-fer','Fermento em pó',100,'g',4.50);
-  ing('ex-cho','Chocolate em pó',200,'g',9.90);
-  ing('ex-man','Manteiga',200,'g',10.90);
-  ing('ex-lei','Leite',1,'L',5.49);
-  s.receitas.push({id:'ex-bolo',nome:'Bolo de cenoura com cobertura (exemplo)',rendimento:12,rendNome:'fatias',rendTipo:'un',pesoTotal:1300,pesoUn:'g',perda:0,fornadas:1,gas:3.83,energia:0.5,sobraAlvo:'',exemplo:true,
-    itens:[
-      {ingId:'ex-cen',qtd:300,unidade:'g'},
-      {ingId:'ex-ovo',qtd:4,unidade:'un'},
-      {ingId:'ex-ole',qtd:1,unidade:'xic'},
-      {ingId:'ex-acu',qtd:2,unidade:'xic'},
-      {ingId:'ex-far',qtd:2,unidade:'xic'},
-      {ingId:'ex-fer',qtd:1,unidade:'cs'},
-      {ingId:'ex-acu',qtd:1,unidade:'xic'},
-      {ingId:'ex-cho',qtd:4,unidade:'cs'},
-      {ingId:'ex-man',qtd:1,unidade:'cs'},
-      {ingId:'ex-lei',qtd:5,unidade:'cs'}
-    ],
-    formas:[
-      {id:'ex-f1',nome:'Bolo inteiro',tipo:'un',qtdUn:'g',qtd:12,embalagem:3.5,preco:45},
-      {id:'ex-f2',nome:'Fatia',tipo:'un',qtdUn:'g',qtd:1,embalagem:0.6,preco:6}
-    ]});
-  s.producao.push({id:'ex-p1',data:hoje(),recId:'ex-bolo',qtd:3,anotacoes:'3 bolos no fim de semana'});
-  return s;
+  return estadoVazio();
 }
 
 /* ================== CÁLCULOS ================== */
@@ -498,12 +468,8 @@ function atualizarAvisos(){
 }
 
 /* ---------- Receitas ---------- */
-function bannerExemplo(){
-  if(!temExemplo()) return '';
-  return '<div class="aviso info">👋 O <b>bolo de cenoura</b> é só um <b>exemplo</b> para você ver como funciona. Quando quiser, apague.<div style="margin-top:8px"><button class="btn sec peq" type="button" data-acao="apagar-exemplo">🗑️ Apagar exemplo</button></div></div>';
-}
 function telaReceitas(){
-  var h='<h2>Receitas e produtos</h2>'+bannerExemplo();
+  var h='<h2>Receitas e produtos</h2>';
   if(!S.ingredientes.length) h+='<div class="aviso">Dica: comece cadastrando os <b>ingredientes</b>. Mas você também pode cadastrar direto de dentro da receita.</div>';
   h+='<button class="btn grande" data-acao="nova-rec" type="button">➕ Nova receita</button><div style="height:12px"></div>';
   var lista=S.receitas.slice().sort(porNome);
@@ -576,7 +542,6 @@ document.getElementById('tela').addEventListener('click',function(e){
   var ac=el.getAttribute('data-acao'), id=el.getAttribute('data-id');
   if(ac==='nova-rec') editarReceita(null);
   else if(ac==='ver-rec') abrirResultado(id);
-  else if(ac==='apagar-exemplo') apagarExemplo();
   else if(ac==='ir-aba') irAba(el.getAttribute('data-aba'));
   else if(ac==='lancar-compra') editarCompra(null);
   else if(ac==='ver-compra') editarCompra(id);
@@ -602,17 +567,6 @@ function mostrarTextoParaCopiar(txt){
     c.el.innerHTML='<div class="modal"><h3>Copie a lista</h3><p class="ajuda">Toque e segure no texto, escolha "Selecionar tudo" e depois "Copiar".</p><textarea rows="12" readonly>'+esc(txt)+'</textarea><div class="botoes um"><button class="btn" type="button" data-acao="voltar">Fechar</button></div></div>';
     c.el.addEventListener('click',function(e){ var b=e.target.closest('[data-acao="voltar"]'); if(b) fecharCamada(); });
   });
-}
-
-function apagarExemplo(){
-  var nomes=S.receitas.filter(function(r){return r.exemplo;}).map(function(r){return r.nome;});
-  if(!confirm('Apagar o exemplo?\n\n'+(nomes.length?'Receita: '+nomes.join(', ')+'\n':'')+'E os ingredientes do exemplo que você não usa em outras receitas.')) return;
-  var ids=S.receitas.filter(function(r){return r.exemplo;}).map(function(r){return r.id;});
-  S.receitas=S.receitas.filter(function(r){return !r.exemplo;});
-  S.producao=S.producao.filter(function(p){ return !ids.includes(p.recId); });
-  S.ingredientes=S.ingredientes.filter(function(i){ return !i.exemplo || usosIng(i.id).length>0; });
-  S.ingredientes.forEach(function(i){ i.exemplo=false; });
-  salvar(); renderTela(); toast('Exemplo apagado ✓');
 }
 
 /* ================== PRODUÇÃO ================== */
@@ -1311,7 +1265,7 @@ function abrirBackup(){
       h+='<p class="tec" style="text-align:center">Custo da Cozinha · versão 2 (fluxo simplificado)</p>';
       h+='<div class="secao"><h3>Onde ficam seus dados?</h3><p class="ajuda">Só neste aparelho, dentro deste navegador. Nada vai para a internet. Se você limpar os dados do navegador ou trocar de celular, eles somem. <b>Por isso faça backup toda semana.</b></p></div>';
       h+='<div class="secao"><h3>Cores do alerta</h3><p class="ajuda">Verde quando sobra pelo menos <b>'+fmtNum(S.config.sobraDesejada,0)+'%</b> · vermelho quando sobra menos de <b>'+fmtNum(S.config.sobraMinima,0)+'%</b>. Para mudar, vá em <b>Resumo</b>.</p></div>';
-      h+='<div class="secao"><h3>Apagar</h3><div class="pilha">'+(temExemplo()?'<button class="btn perigo" type="button" data-acao="apagar-exemplo">Apagar exemplo (bolo de cenoura)</button>':'')+
+      h+='<div class="secao"><h3>Apagar</h3><div class="pilha">'+
         '<button class="btn perigo" type="button" data-acao="apagar-tudo">Apagar TUDO deste aparelho</button></div></div>';
       h+='</div>';
       c.el.innerHTML=h;
