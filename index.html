@@ -196,7 +196,6 @@ table.resumo .pct{display:block;font-size:.82rem}
 <main id="tela"></main>
 <nav id="abas">
   <button type="button" data-aba="compras"><span class="ic">🛒</span>Compras</button>
-  <button type="button" data-aba="receitas"><span class="ic">🎂</span>Receitas</button>
   <button type="button" data-aba="producao"><span class="ic">📊</span>Produção</button>
 </nav>
 <div id="toast" role="status" aria-live="polite"></div>
@@ -447,14 +446,13 @@ window.addEventListener('popstate',function(){
 
 /* ================== TELA PRINCIPAL ================== */
 var aba='compras';
-try{ var a0=localStorage.getItem(CHAVE_ABA); if(a0) aba=a0; }catch(e){}
+try{ var a0=localStorage.getItem(CHAVE_ABA); if(a0 && (a0==='compras' || a0==='producao')) aba=a0; }catch(e){}
 function irAba(a){ aba=a; try{ localStorage.setItem(CHAVE_ABA,a); }catch(e){} renderTela(); window.scrollTo(0,0); }
 function renderTela(){
   var bs=document.querySelectorAll('nav#abas button');
   for(var i=0;i<bs.length;i++) bs[i].classList.toggle('ativa',bs[i].getAttribute('data-aba')===aba);
   var h='';
-  if(aba==='receitas') h=telaReceitas();
-  else if(aba==='producao') h=telaProducao();
+  if(aba==='producao') h=telaProducao();
   else h=telaCompras();
   $('#tela').innerHTML=h;
   atualizarAvisos();
@@ -465,28 +463,6 @@ function atualizarAvisos(){
   if(promptInstalar && !instalarDispensado) h+='<div class="aviso info">📲 <b>Instale o app no celular:</b> fica com ícone na tela e funciona sem internet.<div class="botoes" style="margin-top:8px"><button class="btn sec peq" type="button" data-acao="nao-instalar">Agora não</button><button class="btn peq" type="button" data-acao="instalar">Instalar</button></div></div>';
   var av=$('#avisos'); if(av.innerHTML!==h) av.innerHTML=h;
   $('#btnBackup').classList.toggle('pendente',!!backupPendente());
-}
-
-/* ---------- Receitas ---------- */
-function telaReceitas(){
-  var h='<h2>Receitas e produtos</h2>';
-  if(!S.ingredientes.length) h+='<div class="aviso">Dica: comece cadastrando os <b>ingredientes</b>. Mas você também pode cadastrar direto de dentro da receita.</div>';
-  h+='<button class="btn grande" data-acao="nova-rec" type="button">➕ Nova receita</button><div style="height:12px"></div>';
-  var lista=S.receitas.slice().sort(porNome);
-  if(!lista.length) return h+'<div class="vazio"><span class="ic">🎂</span>Nenhuma receita ainda.</div>';
-  lista.forEach(function(r){
-    var k=calcReceita(r);
-    var pior=k.formas.reduce(function(a,f){ var o={vermelho:0,amarelo:1,cinza:2,verde:3}; return (a==null||o[f.st.c]<o[a])?f.st.c:a; },null)||'cinza';
-    h+='<button class="card st-'+pior+'" type="button" data-acao="ver-rec" data-id="'+r.id+'"><span class="seta">Ver ›</span><span class="titulo">'+esc(r.nome)+'</span>'+
-      '<span class="linha">Rende '+fmtNum(k.rend,2)+' '+(k.peso?'kg':esc(r.rendNome))+' · receita inteira custa <b>'+R(k.total)+'</b></span>';
-    if(!k.formas.length) h+='<span class="linha"><i>Sem forma de venda cadastrada</i></span>';
-    k.formas.forEach(function(f){
-      h+='<span class="linha"><span class="bola '+f.st.c+'"></span><b>'+esc(f.f.nome||'Sem nome')+'</b>: '+
-        (f.custo==null? f.motivo : 'custa '+R(f.custo)+' · vende '+R(f.preco)+(f.pct==null?'':' · sobra <b>'+R(f.sobra)+'</b> ('+pct(f.pct)+')'))+'</span>';
-    });
-    h+='</button>';
-  });
-  return h;
 }
 
 /* ---------- Compras ---------- */
@@ -540,9 +516,7 @@ document.getElementById('avisos').addEventListener('click',function(e){
 document.getElementById('tela').addEventListener('click',function(e){
   var el=e.target.closest('[data-acao]'); if(!el) return;
   var ac=el.getAttribute('data-acao'), id=el.getAttribute('data-id');
-  if(ac==='nova-rec') editarReceita(null);
-  else if(ac==='ver-rec') abrirResultado(id);
-  else if(ac==='ir-aba') irAba(el.getAttribute('data-aba'));
+  if(ac==='ir-aba') irAba(el.getAttribute('data-aba'));
   else if(ac==='lancar-compra') editarCompra(null);
   else if(ac==='ver-compra') editarCompra(id);
   else if(ac==='nova-prod') editarProducao(null);
