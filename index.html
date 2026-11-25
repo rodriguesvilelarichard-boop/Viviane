@@ -6,12 +6,6 @@
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#9c4a1a">
 <title>Custo da Cozinha</title>
-<link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" href="icon-192.png">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Custo Cozinha">
 <style>
 :root{
   --bg:#fbf6f0;--card:#fff;--tx:#2b2118;--tx2:#6b5a4c;
@@ -191,11 +185,9 @@ table.resumo .pct{display:block;font-size:.82rem}
 <div id="avisos"></div>
 <main id="tela"></main>
 <nav id="abas">
-  <button type="button" data-aba="ingredientes"><span class="ic">🧂</span>Ingredientes</button>
-  <button type="button" data-aba="receitas"><span class="ic">🎂</span>Receitas</button>
-  <button type="button" data-aba="resumo"><span class="ic">📊</span>Resumo</button>
-  <button type="button" data-aba="semana"><span class="ic">📅</span>Semana</button>
   <button type="button" data-aba="compras"><span class="ic">🛒</span>Compras</button>
+  <button type="button" data-aba="receitas"><span class="ic">🎂</span>Receitas</button>
+  <button type="button" data-aba="producao"><span class="ic">📊</span>Produção</button>
 </nav>
 <div id="toast" role="status" aria-live="polite"></div>
 <datalist id="dl-rend"><option value="quilos"><option value="unidades"><option value="fatias"><option value="bandejas"><option value="porções"><option value="potes"><option value="marmitas"></datalist>
@@ -206,9 +198,8 @@ table.resumo .pct{display:block;font-size:.82rem}
 'use strict';
 
 /* ================== CONSTANTES ================== */
-var CHAVE = 'custoCozinha_v1';
+var CHAVE = 'custoCozinha_v2';
 var CHAVE_ABA = 'custoCozinha_aba';
-var DIAS = ['Seg','Ter','Qua','Qui','Sex','Sáb'];
 var UN = {
   g:{d:'m',f:1,s:'g',p:'g',nome:'g (gramas)'},
   kg:{d:'m',f:1000,s:'kg',p:'kg',nome:'kg (quilo)'},
@@ -308,9 +299,9 @@ function palpiteCaseira(nome,dim){
 /* ================== DADOS ================== */
 var S; var storageOk=true;
 function estadoVazio(){
-  return {app:'custo-cozinha',versao:1,
-    config:{sobraDesejada:40,sobraMinima:20,gasPorFornada:3.83,energiaPorFornada:0.5,botijao:115,fornadasBotijao:30,semanas:1,ordem:{campo:'pct',asc:true}},
-    ingredientes:[],receitas:[],cardapio:{},compras:[],ultimoBackup:0,alteradoEm:0};
+  return {app:'custo-cozinha',versao:2,
+    config:{sobraDesejada:40,sobraMinima:20,gasPorFornada:3.83,energiaPorFornada:0.5,botijao:115,fornadasBotijao:30},
+    ingredientes:[],receitas:[],producao:[],compras:[],ultimoBackup:0,alteradoEm:0};
 }
 function migrar(o){
   var b=estadoVazio();
@@ -329,8 +320,9 @@ function migrar(o){
       formas:(Array.isArray(r.formas)?r.formas:[]).map(function(f){return {id:f.id||novoId(),nome:String(f.nome||''),tipo:f.tipo==='peso'?'peso':'un',qtdUn:f.qtdUn==='kg'?'kg':'g',qtd:vazio(f.qtd)?'':num(f.qtd),embalagem:vazio(f.embalagem)?'':num(f.embalagem),preco:vazio(f.preco)?'':num(f.preco)};})
     };
   });
-  var cd=o.cardapio||{};
-  b.receitas.forEach(function(r){ if(Array.isArray(cd[r.id])){ var d=[0,0,0,0,0,0]; for(var i=0;i<6;i++) d[i]=num(cd[r.id][i]); if(soma(d)>0) b.cardapio[r.id]=d; } });
+  b.producao=(Array.isArray(o.producao)?o.producao:[]).filter(Boolean).map(function(p){
+    return {id:p.id||novoId(),data:p.data||hoje(),recId:p.recId||'',qtd:vazio(p.qtd)?'':num(p.qtd),anotacoes:String(p.anotacoes||'')};
+  });
   b.compras=(Array.isArray(o.compras)?o.compras:[]).filter(Boolean).map(function(c){
     return {id:c.id||novoId(),data:c.data||hoje(),local:String(c.local||''),
       itens:(Array.isArray(c.itens)?c.itens:[]).map(function(it){return {ingId:it.ingId||'',pacotes:vazio(it.pacotes)?1:num(it.pacotes),tam:vazio(it.tam)?'':num(it.tam),un:UN[it.un]?it.un:'',preco:vazio(it.preco)?'':num(it.preco)};})};
@@ -387,6 +379,7 @@ function exemplo(){
       {id:'ex-f1',nome:'Bolo inteiro',tipo:'un',qtdUn:'g',qtd:12,embalagem:3.5,preco:45},
       {id:'ex-f2',nome:'Fatia',tipo:'un',qtdUn:'g',qtd:1,embalagem:0.6,preco:6}
     ]});
+  s.producao.push({id:'ex-p1',data:hoje(),recId:'ex-bolo',qtd:3,anotacoes:'3 bolos no fim de semana'});
   return s;
 }
 
@@ -436,24 +429,10 @@ function calcReceita(r){
 function precoSugerido(custo,alvo){ if(custo==null||alvo>=100) return null; return custo/(1-alvo/100); }
 function arredonda(x){ if(x==null) return null; return x<10? Math.ceil(x*10-1e-9)/10 : Math.ceil(x*2-1e-9)/2; }
 
-function calcCompras(semanas){
-  var mapa={}, base=[];
-  S.receitas.forEach(function(r){
-    var dias=S.cardapio[r.id]; if(!dias) return;
-    var n=soma(dias)*semanas; if(!(n>0)) return;
-    base.push({r:r,n:n});
-    r.itens.forEach(function(it){
-      var ing=ingPorId(it.ingId); if(!ing) return;
-      var q=qtdBaseItem(it,ing)*n; if(!(q>0)) return;
-      mapa[ing.id]=(mapa[ing.id]||0)+q;
-    });
-  });
-  var linhas=Object.keys(mapa).map(function(id){
-    var ing=ingPorId(id), total=mapa[id], emb=baseEmb(ing);
-    var pacotes= emb>0? Math.ceil(Math.round(total/emb*1e6)/1e6) : 0;
-    return {ing:ing,total:total,dim:dimDe(ing.unidade),pacotes:pacotes,valor:pacotes*num(ing.preco),usado:total*custoBase(ing)};
-  }).sort(function(a,b){return porNome(a.ing,b.ing);});
-  return {linhas:linhas,base:base,total:soma(linhas.map(function(l){return l.valor;})),usado:soma(linhas.map(function(l){return l.usado;}))};
+function totalProducao(recId){
+  var total=0, conta=0;
+  S.producao.forEach(function(p){ if(p.recId===recId && num(p.qtd)>0){ total+=num(p.qtd); conta++; } });
+  return {total:total,conta:conta};
 }
 
 /* ================== CAMADAS (telas por cima) + botão voltar do celular ================== */
@@ -487,18 +466,16 @@ window.addEventListener('popstate',function(){
 });
 
 /* ================== TELA PRINCIPAL ================== */
-var aba='receitas';
+var aba='compras';
 try{ var a0=localStorage.getItem(CHAVE_ABA); if(a0) aba=a0; }catch(e){}
 function irAba(a){ aba=a; try{ localStorage.setItem(CHAVE_ABA,a); }catch(e){} renderTela(); window.scrollTo(0,0); }
 function renderTela(){
   var bs=document.querySelectorAll('nav#abas button');
   for(var i=0;i<bs.length;i++) bs[i].classList.toggle('ativa',bs[i].getAttribute('data-aba')===aba);
   var h='';
-  if(aba==='ingredientes') h=telaIngredientes();
-  else if(aba==='resumo') h=telaResumo();
-  else if(aba==='semana') h=telaSemana();
-  else if(aba==='compras') h=telaCompras();
-  else h=telaReceitas();
+  if(aba==='receitas') h=telaReceitas();
+  else if(aba==='producao') h=telaProducao();
+  else h=telaCompras();
   $('#tela').innerHTML=h;
   atualizarAvisos();
 }
@@ -508,35 +485,6 @@ function atualizarAvisos(){
   if(promptInstalar && !instalarDispensado) h+='<div class="aviso info">📲 <b>Instale o app no celular:</b> fica com ícone na tela e funciona sem internet.<div class="botoes" style="margin-top:8px"><button class="btn sec peq" type="button" data-acao="nao-instalar">Agora não</button><button class="btn peq" type="button" data-acao="instalar">Instalar</button></div></div>';
   var av=$('#avisos'); if(av.innerHTML!==h) av.innerHTML=h;
   $('#btnBackup').classList.toggle('pendente',!!backupPendente());
-}
-
-/* ---------- Ingredientes ---------- */
-function descCusto(ing){
-  var d=dimDe(ing.unidade), c=custoBase(ing);
-  if(!(baseEmb(ing)>0)) return 'Falta o tamanho da embalagem';
-  if(d==='m') return 'Sai '+R(c*1000)+' o quilo · R$ '+fmtNum(c,4,2)+' por grama';
-  if(d==='v') return 'Sai '+R(c*1000)+' o litro · R$ '+fmtNum(c,4,2)+' por ml';
-  return 'Sai '+R(c)+' cada unidade';
-}
-function telaIngredientes(){
-  var h='<h2>Ingredientes</h2><p class="ajuda">Cadastre o que você compra e quanto pagou. Quando o preço mudar, é só atualizar aqui: todas as receitas mudam sozinhas.</p>';
-  h+='<div class="botoes"><button class="btn sec" data-acao="lancar-compra" type="button">🧾 Lançar compra</button><button class="btn" data-acao="novo-ing" type="button">➕ Cadastrar ingrediente</button></div>';
-  var lista=S.ingredientes.slice().sort(porNome);
-  if(!lista.length) return h+'<div class="vazio"><span class="ic">🧂</span>Nenhum ingrediente ainda.<br>Toque no botão acima para começar.</div>';
-  if(lista.length>6) h+='<label class="campo"><span class="esconde">Procurar</span><input id="busca-ing" type="search" placeholder="🔎 Procurar ingrediente…"></label>';
-  else h+='<div style="height:12px"></div>';
-  lista.forEach(function(i){
-    var usos=usosIng(i.id).map(function(r){return r.nome;});
-    var velho=diasDesde(i.data)>90;
-    h+='<button class="card" type="button" data-acao="editar-ing" data-id="'+i.id+'" data-busca="'+esc(i.nome.toLowerCase())+'">'+
-      '<span class="seta">Editar ›</span><span class="titulo">'+esc(i.nome)+'</span>'+
-      '<span class="linha">Embalagem de <b>'+esc(fmtEmb(i))+'</b> por <b>'+R(i.preco)+'</b></span>'+
-      '<span class="linha">'+descCusto(i)+'</span>'+
-      '<span class="linha">Preço de '+fmtData(i.data)+(velho?' <span class="tag amarelo">preço antigo, confira</span>':'')+'</span>'+
-      (usos.length?'<span class="linha">Usado em: '+esc(usos.join(', '))+'</span>':'<span class="linha"><i>Ainda não usado em receitas</i></span>')+
-      '</button>';
-  });
-  return h;
 }
 
 /* ---------- Receitas ---------- */
@@ -565,82 +513,14 @@ function telaReceitas(){
   return h;
 }
 
-/* ---------- Resumo ---------- */
-function telaResumo(){
-  var h='<h2>Resumo geral</h2><p class="ajuda">Todos os produtos e jeitos de vender. Toque numa linha para ver os detalhes.</p>';
-  var linhas=[];
-  S.receitas.forEach(function(r){ var k=calcReceita(r); k.formas.forEach(function(f){ linhas.push({r:r,f:f}); }); });
-  if(!linhas.length) return h+'<div class="vazio"><span class="ic">📊</span>Cadastre uma receita com forma de venda para ver o resumo.</div>';
-  var o=S.config.ordem||{campo:'pct',asc:true};
-  function val(l){ var f=l.f; switch(o.campo){ case 'nome': return (l.r.nome+' '+f.f.nome).toLowerCase(); case 'custo': return f.custo; case 'preco': return f.preco; case 'sobra': return f.sobra; default: return f.pct; } }
-  linhas.sort(function(a,b){
-    var va=val(a), vb=val(b);
-    if(va==null&&vb==null) return 0; if(va==null) return 1; if(vb==null) return -1;
-    var c= typeof va==='string'? va.localeCompare(vb,'pt-BR') : va-vb;
-    return o.asc? c : -c;
-  });
-  h+='<div class="ordem"><button type="button" class="btn sec peq'+(o.campo==='pct'&&o.asc?' on':'')+'" data-acao="ordenar" data-campo="pct" data-asc="1">⬆️ Sobra menos primeiro</button>'+
-     '<button type="button" class="btn sec peq'+(o.campo==='pct'&&!o.asc?' on':'')+'" data-acao="ordenar" data-campo="pct" data-asc="0">⬇️ Sobra mais primeiro</button></div>';
-  function th(campo,rot,cls){ var seta= o.campo===campo? (o.asc?' ▲':' ▼') : ''; return '<th class="'+(cls||'')+'"><button type="button" data-acao="ordenar" data-campo="'+campo+'">'+rot+seta+'</button></th>'; }
-  h+='<div class="tabela-wrap"><table class="resumo"><thead><tr>'+th('nome','Produto')+th('custo','Custo','num')+th('preco','Preço','num col-preco')+th('pct','Sobra','num')+'</tr></thead><tbody>';
-  linhas.forEach(function(l){
-    var f=l.f;
-    var cor= f.st.c==='verde'?'verde-tx':f.st.c==='vermelho'?'verm-tx':f.st.c==='amarelo'?'amar-tx':'';
-    h+='<tr class="clic st-'+f.st.c+'" data-acao="ver-rec" data-id="'+l.r.id+'"><td><span class="prod"><span class="bola '+f.st.c+'"></span>'+esc(l.r.nome)+'</span><span class="forma-n">'+esc(f.f.nome||'Sem nome')+'</span></td>'+
-      '<td class="num">'+(f.custo==null?'—':R(f.custo))+'<span class="preco-mini">vende '+(f.preco>0?R(f.preco):'—')+'</span></td><td class="num col-preco">'+(f.preco>0?R(f.preco):'—')+'</td>'+
-      '<td class="num '+cor+'"><b>'+(f.sobra==null||!(f.preco>0)?'—':R(f.sobra))+'</b><span class="pct">'+(f.pct==null?f.st.t:pct(f.pct))+'</span></td></tr>';
-  });
-  h+='</tbody></table></div>';
-  h+='<div class="legenda"><span><span class="bola verde"></span>Bom (sobra '+fmtNum(S.config.sobraDesejada,0)+'% ou mais)</span> <span><span class="bola amarelo"></span>Sobra pouco</span> <span><span class="bola vermelho"></span>Prejuízo ou menos de '+fmtNum(S.config.sobraMinima,0)+'%</span></div>';
-  h+='<p class="tec">"Sobra" = preço − custo (margem de contribuição). "%" = sobra ÷ preço (margem sobre o preço de venda).</p>';
-  h+='<details class="secao"><summary>🎨 Mudar quando fica verde, amarelo ou vermelho</summary>'+
-    '<label class="campo"><span>Fica <span class="verde-tx">verde</span> quando sobra pelo menos (%)</span><input inputmode="decimal" id="cfg-desejada" value="'+paraInput(S.config.sobraDesejada)+'"></label>'+
-    '<label class="campo"><span>Fica <span class="verm-tx">vermelho</span> quando sobra menos de (%)</span><input inputmode="decimal" id="cfg-minima" value="'+paraInput(S.config.sobraMinima)+'"></label>'+
-    '<button type="button" class="btn" data-acao="salvar-cores">Salvar</button></details>';
-  return h;
-}
-
-/* ---------- Semana ---------- */
-function totalSemana(){ var t=0; for(var id in S.cardapio) if(recPorId(id)) t+=soma(S.cardapio[id]); return t; }
-function telaSemana(){
-  var h='<h2>Cardápio da semana</h2><p class="ajuda">Coloque <b>quantas receitas</b> de cada produto você faz em cada dia. Pode usar meia receita: <b>0,5</b>. Salva sozinho.</p>';
-  var lista=S.receitas.slice().sort(porNome);
-  if(!lista.length) return h+'<div class="vazio"><span class="ic">📅</span>Cadastre uma receita primeiro.</div>';
-  lista.forEach(function(r){
-    var d=S.cardapio[r.id]||[0,0,0,0,0,0]; var t=soma(d);
-    h+='<div class="card" id="sem-'+r.id+'"><span class="titulo">'+esc(r.nome)+'</span><span class="linha" id="semt-'+r.id+'">'+txtTotalRec(t,r)+'</span><div class="dias">';
-    for(var i=0;i<6;i++) h+='<div class="dia"><label for="d-'+r.id+'-'+i+'">'+DIAS[i]+'</label><input id="d-'+r.id+'-'+i+'" class="'+(d[i]>0?'tem':'')+'" inputmode="decimal" data-sem="'+r.id+'" data-dia="'+i+'" value="'+(d[i]>0?paraInput(d[i]):'')+'" placeholder="0" aria-label="'+esc(r.nome)+' '+DIAS[i]+'"></div>';
-    h+='</div></div>';
-  });
-  h+='<p id="sem-total" class="resumo-ed">'+txtTotalSemana()+'</p>';
-  h+='<div class="botoes"><button type="button" class="btn sec" data-acao="limpar-semana">Limpar a semana</button><button type="button" class="btn" data-acao="ir-aba" data-aba="compras">🛒 Ver lista de compras</button></div>';
-  return h;
-}
-function txtTotalRec(t,r){ if(!(t>0)) return 'Não está no cardápio desta semana'; var x=''; if(r && r.rendTipo==='peso' && num(r.rendimento)>0) x=' ≈ '+fmtNum(t*num(r.rendimento),2)+' kg'; return 'Na semana: <b>'+fmtNum(t,2)+' '+(t>=2?'receitas':'receita')+x+'</b>'; }
-function txtTotalSemana(){ var t=totalSemana(); return 'Total da semana: '+fmtNum(t,2)+' '+(t>=2||t===0?'receitas':'receita'); }
-
 /* ---------- Compras ---------- */
-function textoCompras(c,sem){
-  var t='🛒 *Lista de compras* ('+(sem===1?'1 semana':sem+' semanas')+')\n\n';
-  c.linhas.forEach(function(l){
-    t+= l.pacotes>0 ? '• '+l.ing.nome+': '+l.pacotes+' × '+fmtEmb(l.ing)+' — '+R(l.valor)+'\n' : '• '+l.ing.nome+': '+fmtQtdBase(l.total,l.dim)+'\n';
-  });
-  t+='\n*Total estimado: '+R(c.total)+'*';
-  return t;
-}
-var subCompras='lista';
-try{ subCompras=localStorage.getItem('custoCozinha_subCompras')||'lista'; }catch(e){}
 function telaCompras(){
-  var h='<div class="seg" style="margin:4px 0 14px"><button type="button" data-acao="sub-compras" data-v="lista" class="'+(subCompras!=='feitas'?'on':'')+'">🛒 O que comprar</button><button type="button" data-acao="sub-compras" data-v="feitas" class="'+(subCompras==='feitas'?'on':'')+'">🧾 Compras feitas</button></div>';
-  return h+(subCompras==='feitas'? telaComprasFeitas() : telaListaCompras());
-}
-function telaComprasFeitas(){
-  var h='<h2>Compras feitas</h2><p class="ajuda">Lance o que você comprou e quanto pagou. O preço dos ingredientes atualiza sozinho e o custo das receitas também.</p>';
-  h+='<button class="btn grande" type="button" data-acao="lancar-compra">🧾 Lançar compra</button>';
+  var h='<h2>Lançar compra</h2><p class="ajuda">Quando você compra ingredientes, lança aqui. Os preços de todas as receitas atualizam automaticamente.</p>';
+  h+='<button class="btn grande" type="button" data-acao="lancar-compra">🧾 Lançar compra</button><div style="height:12px"></div>';
   var lista=S.compras.slice().sort(function(a,b){ return a.data<b.data?1:a.data>b.data?-1:0; });
-  if(!lista.length) return h+'<div class="vazio"><span class="ic">🧾</span>Nenhuma compra lançada ainda.<br>Dica: na aba "O que comprar", toque em <b>"Comprei"</b> quando voltar do mercado.</div>';
+  if(!lista.length) return h+'<div class="vazio"><span class="ic">🧾</span>Nenhuma compra lançada ainda.</div>';
   var mes=hoje().slice(0,7), totMes=soma(lista.filter(function(c){return c.data.slice(0,7)===mes;}).map(totalCompra));
-  h+='<p class="resumo-ed">Gasto em compras neste mês: '+R(totMes)+'</p>';
+  h+='<p class="resumo-ed">Total do mês: '+R(totMes)+'</p>';
   lista.forEach(function(c){
     var nomes=c.itens.map(function(it){ var g=ingPorId(it.ingId); return g?g.nome:'(excluído)'; });
     h+='<button class="card" type="button" data-acao="ver-compra" data-id="'+c.id+'"><span class="seta">Ver ›</span><span class="titulo">'+fmtData(c.data)+(c.local?' · '+esc(c.local):'')+'</span>'+
@@ -649,27 +529,27 @@ function telaComprasFeitas(){
   });
   return h;
 }
-function telaListaCompras(){
-  var sem=S.config.semanas===2?2:1;
-  var h='<h2>Lista de compras</h2><p class="ajuda">Feita a partir do <b>cardápio da semana</b>. Já arredonda para embalagens inteiras.</p>';
-  h+='<div class="seg-semanas"><button type="button" class="btn sec'+(sem===1?' on':'')+'" data-acao="semanas" data-v="1">1 semana</button><button type="button" class="btn sec'+(sem===2?' on':'')+'" data-acao="semanas" data-v="2">2 semanas</button></div>';
-  var c=calcCompras(sem);
-  if(!c.base.length) return h+'<div class="vazio"><span class="ic">🛒</span>O cardápio da semana está vazio.<br><br><button type="button" class="btn" data-acao="ir-aba" data-aba="semana">📅 Montar o cardápio</button></div>';
-  h+='<p class="ajuda">Conta feita com: '+c.base.map(function(b){return esc(b.r.nome)+' × '+fmtNum(b.n,2)+(b.n>=2?' receitas':' receita');}).join('; ')+'.</p>';
-  h+='<div class="secao">';
-  if(!c.linhas.length) h+='<p>As receitas do cardápio não têm ingredientes com quantidade.</p>';
-  c.linhas.forEach(function(l){
-    h+='<div class="compra"><span class="nome">'+esc(l.ing.nome)+'</span>'+
-      (l.pacotes>0? '<span class="qtd">Comprar '+l.pacotes+' × '+esc(fmtEmb(l.ing))+'</span>' : '<span class="qtd verm-tx">Falta o tamanho da embalagem</span>')+
-      '<span class="usa">Vai usar '+fmtQtdBase(l.total,l.dim)+'</span><span class="val">'+R(l.valor)+'</span></div>';
+
+/* ---------- Produção ---------- */
+function telaProducao(){
+  var h='<h2>Fiz essa receita</h2><p class="ajuda">Registre quantas unidades/kg você produziu de cada receita. Ajuda a saber o quanto sai de cada uma.</p>';
+  h+='<button class="btn grande" type="button" data-acao="nova-prod">➕ Registrar produção</button><div style="height:12px"></div>';
+  if(!S.receitas.length) return h+'<div class="vazio"><span class="ic">📊</span>Cadastre uma receita primeiro.</div>';
+  var porRec={};
+  S.receitas.forEach(function(r){ porRec[r.id]=S.producao.filter(function(p){return p.recId===r.id;}).sort(function(a,b){return a.data<b.data?1:a.data>b.data?-1:0;}); });
+  S.receitas.slice().sort(porNome).forEach(function(r){
+    var prods=porRec[r.id], tot=totalProducao(r.id);
+    if(!prods.length) return;
+    h+='<div class="card"><span class="titulo">'+esc(r.nome)+'</span>';
+    h+='<span class="linha">Total: <b>'+fmtNum(tot.total,2)+' '+(r.rendTipo==='peso'?'kg':esc(r.rendNome||'unidades'))+' · '+tot.conta+' vez(es)</b></span>';
+    prods.slice(0,3).forEach(function(p){
+      h+='<span class="linha">'+fmtData(p.data)+': <b>'+fmtNum(p.qtd,2)+'</b>'+(p.anotacoes?' <span class="ajuda">— '+esc(p.anotacoes.substring(0,30))+'</span>':'')+'</span>';
+    });
+    if(prods.length>3) h+='<span class="linha"><i>... e mais '+( prods.length-3)+' registro'+(prods.length-3===1?'':'s')+'</i></span>';
+    h+='<div class="botoes" style="margin-top:8px"><button class="btn sec peq" type="button" data-acao="add-prod" data-id="'+r.id+'">Adicionar</button>'+
+      '<button class="btn sec peq" type="button" data-acao="ver-prod" data-id="'+r.id+'">Ver histórico</button></div>';
+    h+='</div>';
   });
-  h+='</div>';
-  h+='<div class="total-box"><span>Total estimado da compra</span><span class="big">'+R(c.total)+'</span></div>';
-  h+='<p class="ajuda">Desse valor, o que vai realmente para as receitas é '+R(c.usado)+'. O resto é o que sobra nas embalagens para as próximas semanas.</p>';
-  h+='<div class="pilha"><button type="button" class="btn grande verde" data-acao="comprei-lista">✅ Comprei! Lançar o que paguei</button><button type="button" class="btn grande" data-acao="copiar">📋 Copiar lista (para colar no WhatsApp)</button>'+
-     '<a class="btn grande sec" target="_blank" rel="noopener" href="https://wa.me/?text='+encodeURIComponent(textoCompras(c,sem))+'">💬 Abrir no WhatsApp</a></div>';
-  h+='<p class="ajuda">O botão "Abrir no WhatsApp" precisa de internet. O "Copiar" funciona sempre.</p>';
-  h+='<p class="ajuda">Embalagens de venda (caixas, bandejas) não entram nesta lista.</p>';
   return h;
 }
 
@@ -684,47 +564,15 @@ document.getElementById('avisos').addEventListener('click',function(e){
 document.getElementById('tela').addEventListener('click',function(e){
   var el=e.target.closest('[data-acao]'); if(!el) return;
   var ac=el.getAttribute('data-acao'), id=el.getAttribute('data-id');
-  if(ac==='novo-ing') editarIngrediente(null);
-  else if(ac==='editar-ing') editarIngrediente(id);
-  else if(ac==='nova-rec') editarReceita(null);
+  if(ac==='nova-rec') editarReceita(null);
   else if(ac==='ver-rec') abrirResultado(id);
   else if(ac==='apagar-exemplo') apagarExemplo();
   else if(ac==='ir-aba') irAba(el.getAttribute('data-aba'));
-  else if(ac==='ordenar'){
-    var campo=el.getAttribute('data-campo'), o=S.config.ordem||{};
-    var asc= el.hasAttribute('data-asc')? el.getAttribute('data-asc')==='1' : (o.campo===campo? !o.asc : true);
-    S.config.ordem={campo:campo,asc:asc}; gravar(true); renderTela();
-  }
-  else if(ac==='salvar-cores'){
-    var d=num($('#cfg-desejada').value), m=num($('#cfg-minima').value);
-    if(!(d>0&&d<100)||!(m>=0&&m<100)){ alert('Use números entre 0 e 99.'); return; }
-    if(m>d){ alert('O número do vermelho tem que ser menor que o do verde.'); return; }
-    S.config.sobraDesejada=d; S.config.sobraMinima=m; salvar(); renderTela(); toast('Cores atualizadas ✓');
-  }
-  else if(ac==='limpar-semana'){ if(confirm('Apagar todo o cardápio da semana?')){ S.cardapio={}; salvar(); renderTela(); } }
-  else if(ac==='semanas'){ S.config.semanas=num(el.getAttribute('data-v')); gravar(true); renderTela(); }
-  else if(ac==='sub-compras'){ subCompras=el.getAttribute('data-v'); try{ localStorage.setItem('custoCozinha_subCompras',subCompras); }catch(e){} renderTela(); }
   else if(ac==='lancar-compra') editarCompra(null);
   else if(ac==='ver-compra') editarCompra(id);
-  else if(ac==='comprei-lista'){ var sm=S.config.semanas===2?2:1; editarCompra(null,calcCompras(sm).linhas.filter(function(l){return l.pacotes>0;})); }
-  else if(ac==='copiar'){ var sem=S.config.semanas===2?2:1; copiarTexto(textoCompras(calcCompras(sem),sem)); }
-});
-document.getElementById('tela').addEventListener('input',function(e){
-  var el=e.target;
-  if(el.id==='busca-ing'){
-    var q=el.value.trim().toLowerCase(); var cs=document.querySelectorAll('#tela [data-busca]');
-    for(var i=0;i<cs.length;i++) cs[i].classList.toggle('esconde', q && cs[i].getAttribute('data-busca').indexOf(q)<0);
-    return;
-  }
-  if(el.hasAttribute('data-sem')){
-    var id=el.getAttribute('data-sem'), d=+el.getAttribute('data-dia');
-    var arr=S.cardapio[id]||[0,0,0,0,0,0]; var v=num(el.value); arr[d]=v>0?v:0;
-    if(soma(arr)>0) S.cardapio[id]=arr; else delete S.cardapio[id];
-    el.classList.toggle('tem',v>0);
-    salvar();
-    var t=$('#semt-'+id); if(t) t.innerHTML=txtTotalRec(soma(arr),recPorId(id));
-    var tt=$('#sem-total'); if(tt) tt.innerHTML=txtTotalSemana();
-  }
+  else if(ac==='nova-prod') editarProducao(null);
+  else if(ac==='add-prod') editarProducao(null,id);
+  else if(ac==='ver-prod') verProducao(id);
 });
 
 function copiarTexto(txt){
@@ -751,10 +599,79 @@ function apagarExemplo(){
   if(!confirm('Apagar o exemplo?\n\n'+(nomes.length?'Receita: '+nomes.join(', ')+'\n':'')+'E os ingredientes do exemplo que você não usa em outras receitas.')) return;
   var ids=S.receitas.filter(function(r){return r.exemplo;}).map(function(r){return r.id;});
   S.receitas=S.receitas.filter(function(r){return !r.exemplo;});
-  ids.forEach(function(id){ delete S.cardapio[id]; });
+  S.producao=S.producao.filter(function(p){ return !ids.includes(p.recId); });
   S.ingredientes=S.ingredientes.filter(function(i){ return !i.exemplo || usosIng(i.id).length>0; });
   S.ingredientes.forEach(function(i){ i.exemplo=false; });
   salvar(); renderTela(); toast('Exemplo apagado ✓');
+}
+
+/* ================== PRODUÇÃO ================== */
+function editarProducao(id,recIdPre){
+  var orig= id? S.producao.filter(function(p){return p.id===id;})[0] : null;
+  var d= orig? clone(orig) : {id:novoId(),data:hoje(),recId:recIdPre||'',qtd:'',anotacoes:''};
+  abrirCamada('modal',function(c){
+    c.aoFechar=renderTela;
+    function render(){
+      var recs=S.receitas.slice().sort(porNome);
+      var r=recPorId(d.recId);
+      var h='<div class="modal" role="dialog" aria-label="Produção"><h3>'+(orig?'Editar registro':'Novo registro')+'</h3>'+
+        '<label class="campo"><span>Data</span><input type="date" data-f="data" value="'+esc(d.data)+'"></label>'+
+        '<label class="campo"><span>Receita</span><select data-f="recId" aria-label="Receita"><option value="">— escolha a receita —</option>'+
+        recs.map(function(x){return '<option value="'+x.id+'"'+(x.id===d.recId?' selected':'')+'>'+esc(x.nome)+'</option>';}).join('')+
+        '</select></label>'+
+        (r?'<label class="campo"><span>Produzida <span class="opc">('+fmtNum(d.qtd,2)+' '+fmtNum(d.qtd,2)==='1'?singular(r.rendNome):r.rendTipo==='peso'?'kg':r.rendNome||'unidades'+')</span></span><input data-f="qtd" data-num inputmode="decimal" value="'+paraInput(d.qtd)+'" placeholder="0"></label>':
+         '<label class="campo"><span>Quantidade produzida</span><input data-f="qtd" data-num inputmode="decimal" placeholder="Escolha a receita primeiro" disabled></label>')+
+        '<label class="campo"><span>Notas <span class="opc">(opcional)</span></span><textarea data-f="anotacoes" placeholder="Ex.: forno com ar, mistura diferente…">'+esc(d.anotacoes)+'</textarea></label>'+
+        '<div class="botoes"><button class="btn sec" type="button" data-acao="voltar">Cancelar</button><button class="btn" type="button" data-acao="salvar">Salvar</button></div>'+
+        (orig?'<div class="botoes um"><button class="btn perigo peq" type="button" data-acao="excluir">Excluir</button></div>':'')+
+        '</div>';
+      c.el.innerHTML=h;
+    }
+    render();
+    c.el.addEventListener('input',function(e){ var f=e.target.getAttribute('data-f'); if(!f) return; d[f]=e.target.hasAttribute('data-num')?lerNum(e.target.value):e.target.value; c.sujo=true; });
+    c.el.addEventListener('change',function(e){ if(e.target.getAttribute('data-f')==='recId'){ c.sujo=true; render(); } });
+    c.el.addEventListener('click',function(e){
+      var b=e.target.closest('[data-acao]'); if(!b) return;
+      var ac=b.getAttribute('data-acao');
+      if(ac==='voltar') fecharCamada();
+      else if(ac==='salvar'){
+        if(!d.recId){ alert('Escolha a receita.'); return; }
+        if(!(num(d.qtd)>0)){ alert('Coloque quanto foi produzido.'); return; }
+        if(orig){ var pos=S.producao.indexOf(orig); S.producao[pos]=d; } else S.producao.push(d);
+        salvar(); c.sujo=false; fecharCamada(); toast('Produção registrada ✓');
+      }
+      else if(ac==='excluir'){
+        if(!confirm('Excluir este registro?')) return;
+        S.producao=S.producao.filter(function(p){return p.id!==orig.id;});
+        salvar(); c.sujo=false; fecharCamada(); toast('Registro excluído');
+      }
+    });
+  });
+}
+function verProducao(recId){
+  abrirCamada('pagina',function(c){
+    c.aoFechar=renderTela;
+    var r=recPorId(recId);
+    var prods=S.producao.filter(function(p){return p.recId===recId;}).sort(function(a,b){return a.data<b.data?1:a.data>b.data?-1:0;});
+    var un=r.rendTipo==='peso'?'kg':r.rendNome||'unidades';
+    var h='<div class="topo"><button class="btn peq" type="button" data-acao="voltar">← Voltar</button><h2>'+esc(r.nome)+'</h2></div><div class="corpo">';
+    h+='<div class="secao"><h3>Histórico</h3>';
+    if(!prods.length) return h+'<p class="vazio">Nenhum registro de produção.</p></div>';
+    var total=0;
+    h+='<ul class="lista-simples">';
+    prods.forEach(function(p){
+      total+=num(p.qtd);
+      h+='<li><span>'+fmtData(p.data)+(p.anotacoes?' · '+esc(p.anotacoes.substring(0,40)):'')+'</span><span class="num"><button type="button" data-acao="ed-prod" data-id="'+p.id+'" style="background:none;border:none;cursor:pointer;color:var(--pri);font-weight:700">'+fmtNum(p.qtd,2)+' '+un+'</button></span></li>';
+    });
+    h+='<li class="total"><span>Total</span><span class="num">'+fmtNum(total,2)+' '+un+'</span></li></ul></div>';
+    h+='</div>';
+    c.el.innerHTML=h;
+    c.el.addEventListener('click',function(e){
+      var b=e.target.closest('[data-acao]'); if(!b) return;
+      if(b.getAttribute('data-acao')==='voltar') fecharCamada();
+      else if(b.getAttribute('data-acao')==='ed-prod') editarProducao(b.getAttribute('data-id'));
+    });
+  });
 }
 
 /* ================== EDITOR DE INGREDIENTE ================== */
@@ -1381,7 +1298,7 @@ function abrirBackup(){
             '<p class="ajuda"><b>Android (Chrome):</b> toque nos 3 pontinhos ⋮ no canto de cima → <b>Instalar app</b> (ou "Adicionar à tela inicial").<br><b>iPhone (Safari):</b> toque em Compartilhar ⬆️ → <b>Adicionar à Tela de Início</b>.</p>' :
             '<p class="ajuda">Você está usando o arquivo. Para instalar como app, abra pelo endereço da internet que te passaram.</p>'))+
         '</div>';
-      h+='<p class="tec" style="text-align:center">Custo da Cozinha · versão 5 (compras e histórico de preços)</p>';
+      h+='<p class="tec" style="text-align:center">Custo da Cozinha · versão 2 (fluxo simplificado)</p>';
       h+='<div class="secao"><h3>Onde ficam seus dados?</h3><p class="ajuda">Só neste aparelho, dentro deste navegador. Nada vai para a internet. Se você limpar os dados do navegador ou trocar de celular, eles somem. <b>Por isso faça backup toda semana.</b></p></div>';
       h+='<div class="secao"><h3>Cores do alerta</h3><p class="ajuda">Verde quando sobra pelo menos <b>'+fmtNum(S.config.sobraDesejada,0)+'%</b> · vermelho quando sobra menos de <b>'+fmtNum(S.config.sobraMinima,0)+'%</b>. Para mudar, vá em <b>Resumo</b>.</p></div>';
       h+='<div class="secao"><h3>Apagar</h3><div class="pilha">'+(temExemplo()?'<button class="btn perigo" type="button" data-acao="apagar-exemplo">Apagar exemplo (bolo de cenoura)</button>':'')+
